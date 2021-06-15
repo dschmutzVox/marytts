@@ -36,6 +36,7 @@ import java.nio.FloatBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Vector;
 
+import marytts.config.VoiceConfig;
 import marytts.exceptions.MaryConfigurationException;
 import marytts.features.ByteValuedFeatureProcessor;
 import marytts.features.MaryGenericFeatureProcessors;
@@ -116,6 +117,31 @@ public class JoinCostFeatures implements JoinCostFunction {
 		float wSignal = Float.parseFloat(MaryProperties.getProperty(configPrefix + ".joincostfunction.wSignal", "1.0"));
 		try {
 			InputStream joinWeightStream = MaryProperties.getStream(configPrefix + ".joinCostWeights");
+			load(joinFileName, joinWeightStream, precomputedJoinCostFileName, wSignal);
+		} catch (IOException ioe) {
+			throw new MaryConfigurationException("Problem loading join file " + joinFileName, ioe);
+		}
+	}
+	
+	/**
+	 * Initialise this join cost function by reading the appropriate settings from the MaryProperties using the given
+	 * configPrefix.
+	 * 
+	 * @param configPrefix
+	 *            the prefix for the (voice-specific) config entries to use when looking up files to load.
+	 *        baseLocation
+	 *        	  the base location where the file is located in the folder structure
+	 *        config
+	 *        	  the Voice config from which the parameters are loaded  
+	 * @throws MaryConfigurationException
+	 *             MaryConfigurationException
+	 */
+	public void init(String configPrefix, String baseLocation, VoiceConfig config) throws MaryConfigurationException {
+		String joinFileName = config.getPropertyByName(configPrefix + ".joinCostFile", baseLocation);
+		String precomputedJoinCostFileName = config.getPropertyByName(configPrefix + ".precomputedJoinCostFile", baseLocation);
+		float wSignal = config.getFloatByPropertyName(configPrefix + ".joincostfunction.wSignal", 1.0F);
+		try {
+			InputStream joinWeightStream = config.getStreamByPropertyName(configPrefix + ".joinCostWeights", baseLocation);
 			load(joinFileName, joinWeightStream, precomputedJoinCostFileName, wSignal);
 		} catch (IOException ioe) {
 			throw new MaryConfigurationException("Problem loading join file " + joinFileName, ioe);

@@ -73,6 +73,7 @@ import java.util.StringTokenizer;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 
+import marytts.config.VoiceConfig;
 import marytts.datatypes.MaryData;
 import marytts.datatypes.MaryDataType;
 import marytts.datatypes.MaryXML;
@@ -277,5 +278,12 @@ public class HMMSynthesizer implements WaveformSynthesizer {
 			throw new SynthesisException("HMM Synthesiser could not synthesise: ", e);
 		}
 	}
+
+	@Override
+	public void startup(VoiceConfig config, String voiceName, String baseLocation) throws Exception {
+		// TODO Auto-generated method stub
+		
+	}
+
 
 }

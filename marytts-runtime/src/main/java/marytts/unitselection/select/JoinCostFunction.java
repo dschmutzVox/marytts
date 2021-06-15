@@ -22,6 +22,7 @@ package marytts.unitselection.select;
 import java.io.IOException;
 import java.io.InputStream;
 
+import marytts.config.VoiceConfig;
 import marytts.exceptions.MaryConfigurationException;
 import marytts.unitselection.data.Unit;
 
@@ -57,6 +58,21 @@ public interface JoinCostFunction {
 	 *             if there is a configuration problem
 	 */
 	public void init(String configPrefix) throws MaryConfigurationException;
+	
+	/**
+	 * Initialise this join cost function by reading the appropriate settings from the MaryProperties using the given
+	 * configPrefix.
+	 * 
+	 * @param configPrefix
+	 *            the prefix for the (voice-specific) config entries to use when looking up files to load.
+	 *        baseLocation
+	 *        	  the base location where the file is located in the folder structure
+	 *        config
+	 *        	  the Voice config from which the parameters are loaded    
+	 * @throws MaryConfigurationException
+	 *             if there is a configuration problem
+	 */
+	public void init(String configPrefix, String baseLocation, VoiceConfig config) throws MaryConfigurationException;
 
 	/**
 	 * Load weights and values from the given file

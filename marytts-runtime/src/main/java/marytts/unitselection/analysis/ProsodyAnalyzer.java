@@ -73,7 +73,7 @@ public class ProsodyAnalyzer {
 		this.units = units;
 		this.sampleRate = sampleRate;
 
-		this.logger = MaryUtils.getLogger(this.getClass());
+		// this.logger = MaryUtils.getLogger(this.getClass());
 
 		// List of phone segments:
 		this.phones = parseIntoPhones();

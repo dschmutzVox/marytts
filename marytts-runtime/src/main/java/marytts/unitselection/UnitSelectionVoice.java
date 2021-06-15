@@ -44,6 +44,7 @@ import javax.sound.sampled.AudioFormat;
 
 import marytts.cart.CART;
 import marytts.cart.io.MaryCARTReader;
+import marytts.config.VoiceConfig;
 import marytts.exceptions.MaryConfigurationException;
 import marytts.features.FeatureDefinition;
 import marytts.features.FeatureProcessorManager;
@@ -77,6 +78,150 @@ public class UnitSelectionVoice extends Voice {
 	protected CART[] f0Carts;
 	protected String exampleText;
 
+	
+	public UnitSelectionVoice(String name, String baseLocation, VoiceConfig config, WaveformSynthesizer synthesizer) throws MaryConfigurationException {
+		super(name, baseLocation, config, synthesizer);
+
+		try {
+			this.name = name;
+			String header = "voice." + name;
+
+			domain = config.getPropertyByName(header + ".domain", baseLocation);
+			InputStream exampleTextStream = null;
+			if (!domain.equals("general")) { // limited domain voices must have example text;
+				exampleTextStream = config.getStreamByPropertyName(header + ".exampleTextFile", baseLocation);
+			} else { // general domain voices can have example text:
+				exampleTextStream = config.getStreamByPropertyName(header + ".exampleTextFile", baseLocation);
+			}
+			if (exampleTextStream != null) {
+				readExampleText(exampleTextStream);
+			}
+
+			FeatureProcessorManager featProcManager = FeatureRegistry.getFeatureProcessorManager(this);
+			if (featProcManager == null)
+				featProcManager = FeatureRegistry.getFeatureProcessorManager(getLocale());
+			if (featProcManager == null)
+				throw new MaryConfigurationException("No feature processor manager for voice '" + name + "' (locale "
+						+ getLocale() + ")");
+
+			// build and load targetCostFunction
+			logger.debug("...loading target cost function...");
+			String featureFileName = config.getPropertyByName(header + ".featureFile", baseLocation);
+			InputStream targetWeightStream = config.getStreamByPropertyName(header + ".targetCostWeights", baseLocation);
+			String targetCostClass = config.getPropertyByName(header + ".targetCostClass", baseLocation);
+			TargetCostFunction targetFunction = (TargetCostFunction) Class.forName(targetCostClass).newInstance();
+			targetFunction.load(featureFileName, targetWeightStream, featProcManager);
+
+			// build joinCostFunction
+			logger.debug("...loading join cost function...");
+			String joinCostClass = config.getPropertyByName(header + ".joinCostClass", baseLocation);
+			JoinCostFunction joinFunction = (JoinCostFunction) Class.forName(joinCostClass).newInstance();
+			if (joinFunction instanceof JoinModelCost) {
+				((JoinModelCost) joinFunction).setFeatureDefinition(targetFunction.getFeatureDefinition());
+			}
+			joinFunction.init(header, baseLocation, config);
+
+			// build sCost function
+			StatisticalCostFunction sCostFunction = null;
+			boolean useSCost = MaryProperties.getBoolean(header + ".useSCost", false);
+			if (useSCost) {
+				logger.debug("...loading scost function...");
+				String sCostClass = config.getPropertyByName(header + ".sCostClass", baseLocation);
+				sCostFunction = (StatisticalCostFunction) Class.forName(sCostClass).newInstance();
+				sCostFunction.init(header);
+			}
+
+			// Build the various file readers
+			logger.debug("...loading units file...");
+			String unitReaderClass = config.getPropertyByName(header + ".unitReaderClass", baseLocation);
+			String unitsFile = config.getPropertyByName(header + ".unitsFile", baseLocation);
+			UnitFileReader unitReader = (UnitFileReader) Class.forName(unitReaderClass).newInstance();
+			unitReader.load(unitsFile);
+
+			logger.debug("...loading cart file...");
+			// String cartReaderClass = config.getPropertyByName(header+".cartReaderClass");
+			InputStream cartStream = config.getStreamByPropertyName(header + ".cartFile", baseLocation);
+			CART cart = new MaryCARTReader().loadFromStream(cartStream);
+			cartStream.close();
+			// get the backtrace information
+			int backtrace = config.getIntegerByPropertyName(header + ".cart.backtrace", 100);
+
+			logger.debug("...loading audio time line...");
+			String timelineReaderClass = config.getPropertyByName(header + ".audioTimelineReaderClass", baseLocation);
+			String timelineFile = config.getPropertyByName(header + ".audioTimelineFile", baseLocation);
+			Class<? extends TimelineReader> theClass = Class.forName(timelineReaderClass).asSubclass(TimelineReader.class);
+			// Now invoke Constructor with one String argument
+			Class<String>[] constructorArgTypes = new Class[] { String.class };
+			Object[] args = new Object[] { timelineFile };
+			Constructor<? extends TimelineReader> constructor = (Constructor<? extends TimelineReader>) theClass
+					.getConstructor(constructorArgTypes);
+			TimelineReader timelineReader = constructor.newInstance(args);
+
+			// optionally, get basename timeline
+			String basenameTimelineFile = config.getPropertyByName(header + ".basenameTimeline", baseLocation);
+			TimelineReader basenameTimelineReader = null;
+			if (basenameTimelineFile != null) {
+				logger.debug("...loading basename time line...");
+				basenameTimelineReader = new TimelineReader(basenameTimelineFile);
+			}
+
+			// build and load database
+			logger.debug("...instantiating database...");
+			String databaseClass = config.getPropertyByName(header + ".databaseClass", baseLocation);
+			database = (UnitDatabase) Class.forName(databaseClass).newInstance();
+			if (useSCost) {
+				database.load(targetFunction, joinFunction, sCostFunction, unitReader, cart, timelineReader,
+						basenameTimelineReader, backtrace);
+			} else {
+				database.load(targetFunction, joinFunction, unitReader, cart, timelineReader, basenameTimelineReader, backtrace);
+			}
+
+			// build Selector
+			logger.debug("...instantiating unit selector...");
+			String selectorClass = config.getPropertyByName(header + ".selectorClass", baseLocation);
+			unitSelector = (UnitSelector) Class.forName(selectorClass).newInstance();
+			float targetCostWeights = config.getFloatByPropertyName(header + ".viterbi.wTargetCosts", 0.33F);
+			int beamSize = config.getIntegerByPropertyName(header + ".viterbi.beamsize", 100);
+			if (!useSCost) {
+				unitSelector.load(database, targetCostWeights, beamSize);
+			} else {
+				float sCostWeights = config.getFloatByPropertyName(header + ".viterbi.wSCosts", 0.33F);
+				unitSelector.load(database, targetCostWeights, sCostWeights, beamSize);
+			}
+
+			// samplingRate -> bin, audioformat -> concatenator
+			// build Concatenator
+			logger.debug("...instantiating unit concatenator...");
+			String concatenatorClass = config.getPropertyByName(header + ".concatenatorClass", baseLocation);
+			concatenator = (UnitConcatenator) Class.forName(concatenatorClass).newInstance();
+			concatenator.load(database);
+
+			// TODO: this can be deleted at the same time as CARTF0Modeller
+			// see if there are any voice-specific duration and f0 models to load
+			f0Carts = null;
+			InputStream leftF0CartStream = config.getStreamByPropertyName(header + ".f0.cart.left", baseLocation);
+			if (leftF0CartStream != null) {
+				logger.debug("...loading f0 trees...");
+				f0Carts = new CART[3];
+				f0Carts[0] = new MaryCARTReader().loadFromStream(leftF0CartStream);
+				leftF0CartStream.close();
+				// mid cart:
+				InputStream midF0CartStream = config.getStreamByPropertyName(header + ".f0.cart.mid", baseLocation);
+				f0Carts[1] = new MaryCARTReader().loadFromStream(midF0CartStream);
+				midF0CartStream.close();
+				// right cart:
+				InputStream rightF0CartStream = config.getStreamByPropertyName(header + ".f0.cart.right", baseLocation);
+				f0Carts[2] = new MaryCARTReader().loadFromStream(rightF0CartStream);
+				rightF0CartStream.close();
+			}
+		} catch (MaryConfigurationException mce) {
+			throw mce;
+		} catch (Exception ex) {
+			throw new MaryConfigurationException("Cannot build unit selection voice '" + name + "'", ex);
+		}
+
+	}
+	
 	public UnitSelectionVoice(String name, WaveformSynthesizer synthesizer) throws MaryConfigurationException {
 		super(name, synthesizer);
 

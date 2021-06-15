@@ -27,6 +27,7 @@ import marytts.cart.CART;
 import marytts.cart.Node;
 import marytts.cart.LeafNode.PdfLeafNode;
 import marytts.cart.io.HTSCARTReader;
+import marytts.config.VoiceConfig;
 import marytts.exceptions.MaryConfigurationException;
 import marytts.features.FeatureDefinition;
 import marytts.features.FeatureVector;
@@ -75,6 +76,32 @@ public class JoinModelCost implements JoinCostFunction {
 	 *             MaryConfigurationException
 	 */
 	public void init(String configPrefix) throws MaryConfigurationException {
+		try {
+			String joinFileName = MaryProperties.needFilename(configPrefix + ".joinCostFile");
+			InputStream joinPdfStream = MaryProperties.needStream(configPrefix + ".joinPdfFile");
+			InputStream joinTreeStream = MaryProperties.needStream(configPrefix + ".joinTreeFile");
+			// CHECK not tested the trickyPhonesFile needs to be added into the configuration file
+			String trickyPhonesFileName = MaryProperties.needFilename(configPrefix + ".trickyPhonesFile");
+			load(joinFileName, joinPdfStream, joinTreeStream, trickyPhonesFileName);
+		} catch (IOException ioe) {
+			throw new MaryConfigurationException("Problem loading join file", ioe);
+		}
+	}
+	
+	/**
+	 * Initialise this join cost function by reading the appropriate settings from the MaryProperties using the given
+	 * configPrefix.
+	 * 
+	 * @param configPrefix
+	 *            the prefix for the (voice-specific) config entries to use when looking up files to load.
+	 *        baseLocation
+	 *        	  the base location where the file is located in the folder structure
+	 *        config
+	 *        	  the Voice config from which the parameters are loaded
+	 * @throws MaryConfigurationException
+	 *             MaryConfigurationException
+	 */
+	public void init(String configPrefix, String baseLocation, VoiceConfig config) throws MaryConfigurationException {
 		try {
 			String joinFileName = MaryProperties.needFilename(configPrefix + ".joinCostFile");
 			InputStream joinPdfStream = MaryProperties.needStream(configPrefix + ".joinPdfFile");

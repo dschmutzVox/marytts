@@ -39,6 +39,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import marytts.config.VoiceConfig;
 import marytts.exceptions.MaryConfigurationException;
 import marytts.server.MaryProperties;
 import marytts.unitselection.data.Unit;
@@ -90,6 +91,28 @@ public class PrecompiledJoinCostReader implements JoinCostFunction {
 	 *             MaryConfigurationException
 	 */
 	public void init(String configPrefix) throws MaryConfigurationException {
+		String precomputedJoinCostFileName = MaryProperties.getFilename(configPrefix + ".precomputedJoinCostFile");
+		try {
+			load(precomputedJoinCostFileName, null, null, 0);
+		} catch (IOException ioe) {
+			throw new MaryConfigurationException("Problem loading join file " + precomputedJoinCostFileName, ioe);
+		}
+	}
+	
+	/**
+	 * Initialise this join cost function by reading the appropriate settings from the MaryProperties using the given
+	 * configPrefix.
+	 * 
+	 * @param configPrefix
+	 *            the prefix for the (voice-specific) config entries to use when looking up files to load.
+	 *        baseLocation
+	 *        	  the base location where the file is located in the folder structure 
+	 *        config
+	 *        	  the Voice config from which the parameters are loaded 
+	 * @throws MaryConfigurationException
+	 *             MaryConfigurationException
+	 */
+	public void init(String configPrefix, String baseLocation, VoiceConfig config) throws MaryConfigurationException {
 		String precomputedJoinCostFileName = MaryProperties.getFilename(configPrefix + ".precomputedJoinCostFile");
 		try {
 			load(precomputedJoinCostFileName, null, null, 0);

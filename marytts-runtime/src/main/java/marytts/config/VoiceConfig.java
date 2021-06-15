@@ -19,10 +19,14 @@
  */
 package marytts.config;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.Locale;
 
 import marytts.exceptions.MaryConfigurationException;
+import marytts.exceptions.NoSuchPropertyException;
+import marytts.server.MaryProperties;
 import marytts.util.MaryUtils;
 
 /**
@@ -66,5 +70,81 @@ public class VoiceConfig extends MaryConfig {
 			return null;
 		}
 		return MaryUtils.string2locale(localeString);
+	}
+	
+	public String getPropertyByName(String name) {
+		return getPropertyByName(name, null);
+	}
+	
+	public String getPropertyByName(String name, String baseLocation) {
+		String property = getProperties().getProperty(name);
+		if((baseLocation != null) && (property != null)) {
+			return property.replace("MARY_BASE", baseLocation);
+		} else {
+			return property;
+		}
+	}
+		
+	public InputStream getStreamByPropertyName(String propertyName, String baseLocation) throws FileNotFoundException, MaryConfigurationException {
+		InputStream stream;
+		String propertyValue = getPropertyByName(propertyName, baseLocation);
+		if (propertyValue == null) {
+			return null;
+		} else if (propertyValue.startsWith("jar:")) { // read from classpath
+			String classpathLocation = propertyValue.substring("jar:".length());
+			stream = MaryProperties.class.getResourceAsStream(classpathLocation);
+			if (stream == null) {
+				throw new MaryConfigurationException("For property '" + propertyName + "', no classpath resource available at '"
+						+ classpathLocation + "'");
+			}
+		} else {
+			String fileName = getPropertyByName(propertyName, baseLocation);
+			stream = new FileInputStream(fileName);
+		}
+		return stream;
+	}
+	
+	public int getIntegerByPropertyName(String propertyName, int defaultValue) {
+		String propertyValue = getPropertyByName(propertyName);
+		if(propertyValue == null) {
+			return defaultValue;
+		}
+		try {
+			return Integer.decode(propertyValue);
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
+	}
+	
+	public float getFloatByPropertyName(String propertyName, float defaultValue) {
+		String propertyValue = getPropertyByName(propertyName);
+		if(propertyValue == null) {
+			return defaultValue;
+		}
+		try {
+			return Float.parseFloat(propertyValue);
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
+	}
+	
+	public boolean getBoolanByPropertyName(String propertyName, boolean defaultValue) {
+		String propertyValue = getPropertyByName(propertyName);
+		if(propertyValue == null) {
+			return defaultValue;
+		}
+		try {
+			return Boolean.valueOf(propertyName).booleanValue();
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
+	}
+	
+	public String needPropertyByName(String propertyName) throws NoSuchPropertyException {
+		String propertyValue = getPropertyByName(propertyName);
+		if (propertyValue == null) {
+			throw new NoSuchPropertyException("Missing value `" + propertyValue + "' in configuration files");
+		}
+		return propertyValue;
 	}
 }

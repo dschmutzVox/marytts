@@ -159,6 +159,27 @@ public class Voice {
 			throw new MaryConfigurationException("Cannot instantiate voice '" + voiceName + "'", n);
 		}
 	}
+	
+	public Voice(String name, String baseLocation, VoiceConfig config, WaveformSynthesizer synthesizer) throws MaryConfigurationException {
+		this.voiceName = config.getName();
+		this.synthesizer = synthesizer;
+		this.locale = config.getLocale();
+		int samplingRate = Integer.decode(config.getPropertyByName("voice." + voiceName + ".samplingRate")).intValue();
+		this.dbAudioFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, samplingRate, // samples per second
+				16, // bits per sample
+				1, // mono
+				2, // nr. of bytes per frame
+				samplingRate, // nr. of frames per second
+				false);
+
+		this.gender = new Gender(config.getPropertyByName("voice." + voiceName + ".gender"));
+
+		try {
+			init(baseLocation, config);
+		} catch (Exception n) {
+			throw new MaryConfigurationException("Cannot instantiate voice '" + voiceName + "'", n);
+		}
+	}
 
 	public Voice(String name, WaveformSynthesizer synthesizer) throws MaryConfigurationException {
 		this.voiceName = name;
@@ -183,6 +204,44 @@ public class Voice {
 		} catch (Exception n) {
 			throw new MaryConfigurationException("Cannot instantiate voice '" + voiceName + "'", n);
 		}
+	}
+	
+	/**
+	 * @throws MaryConfigurationException
+	 *             MaryConfigurationException
+	 * @throws NoSuchPropertyException
+	 *             NoSuchPropertyException
+	 * @throws IOException
+	 *             IOException
+	 */
+	private void init(String baseLocation, VoiceConfig config) throws MaryConfigurationException, NoSuchPropertyException, IOException {
+		// Read settings from config file:
+		String header = "voice." + getName();
+		this.wantToBeDefault = config.getIntegerByPropertyName(header + ".wants.to.be.default", 0);
+		try {
+			allophoneSet = MaryRuntimeUtils.needAllophoneSet(header + ".allophoneset");
+		} catch (MaryConfigurationException e) {
+			// no allophone set for voice, try for locale
+			try {
+				allophoneSet = MaryRuntimeUtils.needAllophoneSet(MaryProperties.localePrefix(getLocale()) + ".allophoneset");
+			} catch (MaryConfigurationException e2) {
+				throw new MaryConfigurationException("No allophone set specified -- neither for voice '" + getName()
+						+ "' nor for locale '" + getLocale() + "'", e2);
+			}
+		}
+		preferredModulesClasses = config.getPropertyByName(header + ".preferredModules");
+
+		String lexiconClass = config.getPropertyByName(header + ".lexiconClass");
+		String lexiconName = config.getPropertyByName(header + ".lexicon");
+		vocalizationSupport = config.getBoolanByPropertyName(header + ".vocalizationSupport", false);
+		if (vocalizationSupport) {
+			vocalizationSynthesizer = new VocalizationSynthesizer(this);
+		}
+
+		loadOldStyleProsodyModels(header);
+		loadAcousticModels(header, baseLocation, config);
+		// initialization of FeatureProcessorManager for this voice, if needed:
+		initFeatureProcessorManager();
 	}
 
 	/**
@@ -249,6 +308,103 @@ public class Voice {
 			} catch (IOException e) {
 				throw new MaryConfigurationException("Cannot load f0 contour graph file '" + f0GraphFile + "'", e);
 			}
+		}
+	}
+	
+	/**
+	 * Load a flexibly configurable list of acoustic models as specified in the config file.
+	 * 
+	 * @param header
+	 *            header
+	 *        config
+	 *        	  The VoiceConfig to load neccessary properties
+	 * @throws MaryConfigurationException
+	 *             MaryConfigurationException
+	 * @throws NoSuchPropertyException
+	 *             NoSuchPropertyException
+	 * @throws IOException
+	 *             IOException
+	 */
+	private void loadAcousticModels(String header, String baseLocation, VoiceConfig config) throws MaryConfigurationException, NoSuchPropertyException, IOException {
+		// The feature processor manager that all acoustic models will use to predict their acoustics:
+		FeatureProcessorManager symbolicFPM = FeatureRegistry.determineBestFeatureProcessorManager(getLocale());
+
+		// Acoustic models:
+		String acousticModelsString = config.getPropertyByName(header + ".acousticModels");
+		if (acousticModelsString != null) {
+			acousticModels = new HashMap<String, Model>();
+
+			// add boundary "model" (which could of course be overwritten by appropriate properties in voice config):
+			acousticModels.put("boundary", new BoundaryModel(symbolicFPM, voiceName, null, "duration", null, null, null,
+					"boundaries"));
+
+			StringTokenizer acousticModelStrings = new StringTokenizer(acousticModelsString);
+			do {
+				String modelName = acousticModelStrings.nextToken();
+
+				// get more properties from voice config, depending on the model name:
+				String modelType = config.getPropertyByName(header + "." + modelName + ".model");
+
+				InputStream modelDataStream = config.getStreamByPropertyName(header + "." + modelName + ".data", baseLocation); // not used for hmm
+																											// models
+				String modelAttributeName = config.needPropertyByName(header + "." + modelName + ".attribute");
+
+				// the following are null if not defined; this is handled in the Model constructor:
+				String modelAttributeFormat = config.getPropertyByName(header + "." + modelName + ".attribute.format");
+				String modelFeatureName = config.getPropertyByName(header + "." + modelName + ".feature");
+				String modelPredictFrom = config.getPropertyByName(header + "." + modelName + ".predictFrom");
+				String modelApplyTo = config.getPropertyByName(header + "." + modelName + ".applyTo");
+
+				// consult the ModelType enum to find appropriate Model subclass...
+				ModelType possibleModelTypes = ModelType.fromString(modelType);
+				// if modelType is not in ModelType.values(), we don't know how to handle it:
+				if (possibleModelTypes == null) {
+					throw new MaryConfigurationException("Cannot handle unknown model type: " + modelType);
+				}
+
+				// ...and instantiate it in a switch statement:
+				Model model = null;
+				try {
+					switch (possibleModelTypes) {
+					case CART:
+						model = new CARTModel(symbolicFPM, voiceName, modelDataStream, modelAttributeName, modelAttributeFormat,
+								modelFeatureName, modelPredictFrom, modelApplyTo);
+						break;
+
+					case SOP:
+						model = new SoPModel(symbolicFPM, voiceName, modelDataStream, modelAttributeName, modelAttributeFormat,
+								modelFeatureName, modelPredictFrom, modelApplyTo);
+						break;
+
+					case HMM:
+						// if we already have a HMM duration or F0 model, and if this is the other of the two, and if so,
+						// and they use the same dataFile, then let them be the same instance:
+						// if this is the case set the boolean variable predictDurAndF0 to true in HMMModel
+						if (getDurationModel() != null && getDurationModel() instanceof HMMModel
+								&& modelName.equalsIgnoreCase("F0") && voiceName.equals(getDurationModel().getVoiceName())) {
+							model = getDurationModel();
+							((HMMModel) model).setPredictDurAndF0(true);
+						} else if (getF0Model() != null && getF0Model() instanceof HMMModel
+								&& modelName.equalsIgnoreCase("duration") && voiceName.equals(getF0Model().getVoiceName())) {
+							model = getF0Model();
+							((HMMModel) model).setPredictDurAndF0(true);
+						} else {
+							model = new HMMModel(symbolicFPM, voiceName, modelDataStream, modelAttributeName,
+									modelAttributeFormat, modelFeatureName, modelPredictFrom, modelApplyTo);
+						}
+						break;
+					}
+				} catch (Throwable t) {
+					throw new MaryConfigurationException("Cannot instantiate model '" + modelName + "' of type '" + modelType
+							+ "' from '" + MaryProperties.getProperty(header + "." + modelName + ".data") + "'", t);
+				}
+
+				// if we got this far, model should not be null:
+				assert model != null;
+
+				// put the model in the Model Map:
+				acousticModels.put(modelName, model);
+			} while (acousticModelStrings.hasMoreTokens());
 		}
 	}
 

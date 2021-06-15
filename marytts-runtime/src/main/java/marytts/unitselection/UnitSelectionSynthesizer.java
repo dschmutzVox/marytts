@@ -34,6 +34,7 @@ import java.util.StringTokenizer;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 
+import marytts.config.VoiceConfig;
 import marytts.datatypes.MaryData;
 import marytts.datatypes.MaryDataType;
 import marytts.datatypes.MaryXML;
@@ -77,7 +78,17 @@ public class UnitSelectionSynthesizer implements WaveformSynthesizer {
 
 	public UnitSelectionSynthesizer() {
 	}
-
+	
+	public void startup(VoiceConfig config, String voiceName, String baseLocation) throws Exception {
+		long time = System.currentTimeMillis();
+		Voice unitSelVoice = new UnitSelectionVoice(voiceName, baseLocation, config, this);
+		// logger.debug("Voice '" + unitSelVoice + "'");
+		Voice.registerVoice(unitSelVoice);
+		long newtime = System.currentTimeMillis() - time;
+		// logger.info("Loading of voice " + voiceName + " took " + newtime + " milliseconds");
+		// logger.info("started.");
+	}
+ 
 	/**
 	 * Start up the waveform synthesizer. This must be called once before calling synthesize().
 	 * 
@@ -173,7 +184,7 @@ public class UnitSelectionSynthesizer implements WaveformSynthesizer {
 		}
 		// TODO: check if we actually need to access v.getDatabase() here
 		UnitDatabase database = v.getDatabase();
-		logger.debug("Selecting units with a " + unitSel.getClass().getName() + " from a " + database.getClass().getName());
+		// logger.debug("Selecting units with a " + unitSel.getClass().getName() + " from a " + database.getClass().getName());
 		List<SelectedUnit> selectedUnits = unitSel.selectUnits(tokensAndBoundaries, voice);
 		// if (logger.getEffectiveLevel().equals(Level.DEBUG)) {
 		// StringWriter sw = new StringWriter();
@@ -184,7 +195,7 @@ public class UnitSelectionSynthesizer implements WaveformSynthesizer {
 		// }
 
 		// Concatenate:
-		logger.debug("Now creating audio with a " + unitConcatenator.getClass().getName());
+		// logger.debug("Now creating audio with a " + unitConcatenator.getClass().getName());
 		AudioInputStream audio = null;
 		try {
 			audio = unitConcatenator.getAudio(selectedUnits);
@@ -262,18 +273,22 @@ public class UnitSelectionSynthesizer implements WaveformSynthesizer {
 					maryxmlElement.setAttribute(unitAttrName, unitString);
 				}
 			} else {
-				logger.debug("Unit " + su.getTarget().getName() + " of length " + unitDurationInMillis
-						+ " ms has no maryxml element.");
+				if(logger != null) {
+					logger.debug("Unit " + su.getTarget().getName() + " of length " + unitDurationInMillis
+							+ " ms has no maryxml element.");
+					}
 			}
 		}
-		if (logger.getEffectiveLevel().equals(Level.DEBUG)) {
-			try {
-				MaryNormalisedWriter writer = new MaryNormalisedWriter();
-				ByteArrayOutputStream debugOut = new ByteArrayOutputStream();
-				writer.output(tokensAndBoundaries.get(0).getOwnerDocument(), debugOut);
-				logger.debug("Propagating the realised unit durations to the XML tree: \n" + debugOut.toString());
-			} catch (Exception e) {
-				logger.warn("Problem writing XML to logfile: " + e);
+		if(logger != null) {
+			if (logger.getEffectiveLevel().equals(Level.DEBUG)) {
+				try {
+					MaryNormalisedWriter writer = new MaryNormalisedWriter();
+					ByteArrayOutputStream debugOut = new ByteArrayOutputStream();
+					writer.output(tokensAndBoundaries.get(0).getOwnerDocument(), debugOut);
+					logger.debug("Propagating the realised unit durations to the XML tree: \n" + debugOut.toString());
+				} catch (Exception e) {
+					logger.warn("Problem writing XML to logfile: " + e);
+				}
 			}
 		}
 

@@ -23,6 +23,7 @@ import java.util.List;
 
 import javax.sound.sampled.AudioInputStream;
 
+import marytts.config.VoiceConfig;
 import marytts.exceptions.SynthesisException;
 
 import org.w3c.dom.Element;
@@ -38,6 +39,14 @@ public interface WaveformSynthesizer {
 	 *             Exception
 	 */
 	public void startup() throws Exception;
+	
+	/**
+	 * Start up the waveform synthesizer. This must be called once before calling synthesize().
+	 * 
+	 * @throws Exception
+	 *             Exception
+	 */
+	public void startup(VoiceConfig config, String voiceName, String baseLocation) throws Exception;
 
 	/**
 	 * Perform a power-on self test by processing some example input data.

@@ -27,6 +27,7 @@ import java.util.List;
 
 import javax.sound.sampled.AudioInputStream;
 
+import marytts.config.VoiceConfig;
 import marytts.datatypes.MaryXML;
 import marytts.exceptions.SynthesisException;
 import marytts.modules.synthesis.Voice;
@@ -211,6 +212,12 @@ public class InterpolatingSynthesizer implements WaveformSynthesizer {
 		DDSAudioInputStream outputAudio = new DDSAudioInputStream(new BufferedDoubleDataSource(foas), audio1.getFormat());
 
 		return outputAudio;
+	}
+
+	@Override
+	public void startup(VoiceConfig config, String voiceName, String baseLocation) throws Exception {
+		// TODO Auto-generated method stub
+		
 	}
 
 }

@@ -189,7 +189,7 @@ public abstract class MaryConfig {
 
 	private Properties props;
 
-	protected MaryConfig(InputStream propertyStream) throws MaryConfigurationException {
+	public MaryConfig(InputStream propertyStream) throws MaryConfigurationException {
 		props = new PropertiesTrimTrailingWhitespace();
 		try {
 			props.load(propertyStream);
@@ -216,6 +216,10 @@ public abstract class MaryConfig {
 
 	public Properties getProperties() {
 		return props;
+	}
+	
+	public String getPropertyByName(String name) {
+		return props.getProperty(name);
 	}
 
 	/**
